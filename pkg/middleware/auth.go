@@ -198,37 +198,35 @@ func RoleAuth(roles ...org.RoleType) web.Handler {
 	}
 }
 
-func Auth(options *AuthOptions) web.Handler {
+func Auth(authService auth.UserTokenService) func(c *contextmodel.ReqContext) {
 	return func(c *contextmodel.ReqContext) {
-		forceLogin := false
-		if c.AllowAnonymous {
-			forceLogin = shouldForceLogin(c)
-			if !forceLogin {
-				orgIDValue := c.Req.URL.Query().Get("orgId")
-				orgID, err := strconv.ParseInt(orgIDValue, 10, 64)
-				if err == nil && orgID > 0 && orgID != c.SignedInUser.GetOrgID() {
-					forceLogin = true
+		// Получаем токен из заголовка Authorization
+		header := c.Req.Header.Get("Authorization")
+		if header != "" {
+			// Bearer token
+			parts := strings.Split(header, " ")
+			if len(parts) == 2 && parts[0] == "Bearer" {
+				token := parts[1]
+				
+				// Проверяем токен через сервис аутентификации
+				userToken, err := authService.LookupToken(c.Req.Context(), token)
+				if err != nil {
+					c.JsonApiErr(401, "Invalid token", err)
+					return
 				}
-			}
-		}
 
-		requireLogin := !c.AllowAnonymous || forceLogin || options.ReqNoAnonynmous
-
-		if !c.IsSignedIn && options.ReqSignedIn && requireLogin {
-			var revokedErr *auth.TokenRevokedError
-			if errors.As(c.LookupTokenErr, &revokedErr) {
-				tokenRevoked(c, revokedErr)
+				// Токен валиден - добавляем информацию о пользователе в контекст
+				c.SignedInUser = &contextmodel.SignedInUser{
+					UserId:  userToken.UserId,
+					OrgId:   userToken.OrgId,
+					// ...другие поля
+				}
 				return
 			}
-
-			notAuthorized(c)
-			return
 		}
 
-		if !c.IsGrafanaAdmin && options.ReqGrafanaAdmin {
-			accessForbidden(c)
-			return
-		}
+		// Если нет токена - возвращаем ошибку
+		c.JsonApiErr(401, "Unauthorized", nil)
 	}
 }
 

@@ -257,6 +257,8 @@ func (hs *HTTPServer) registerRoutes() {
 
 	// authed api
 	r.Group("/api", func(apiRoute routing.RouteRegister) {
+		apiRoute.Use(middleware.Auth(hs.AuthTokenService))
+
 		// user (signed in)
 		apiRoute.Group("/user", func(userRoute routing.RouteRegister) {
 			userRoute.Get("/", routing.Wrap(hs.GetSignedInUser))

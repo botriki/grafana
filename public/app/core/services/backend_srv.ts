@@ -65,6 +65,7 @@ export class BackendSrv implements BackendService {
   private readonly responseQueue: ResponseQueue;
   private _tokenRotationInProgress?: Observable<FetchResponse> | null = null;
   private deviceID?: string | null = null;
+  private token?: string;
 
   private dependencies: BackendSrvDependencies = {
     fromFetch: fromFetch,
@@ -104,6 +105,12 @@ export class BackendSrv implements BackendService {
   }
 
   async request<T = unknown>(options: BackendSrvRequest): Promise<T> {
+    // Добавляем токен в заголовки
+    options.headers = options.headers || {};
+    if (this.token) {
+      options.headers.Authorization = `Bearer ${this.token}`;
+    }
+    
     return await lastValueFrom(this.fetch<T>(options).pipe(map((response: FetchResponse<T>) => response.data)));
   }
 

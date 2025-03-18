@@ -229,17 +229,26 @@ func (hs *HTTPServer) LoginAPIPing(c *contextmodel.ReqContext) response.Response
 }
 
 func (hs *HTTPServer) LoginPost(c *contextmodel.ReqContext) response.Response {
-	identity, err := hs.authnService.Login(c.Req.Context(), authn.ClientForm, &authn.Request{HTTPRequest: c.Req})
+	// Проверка логина/пароля
+	user, err := hs.authenticateUser(c.Req.Context(), loginCmd)
 	if err != nil {
-		tokenErr := &auth.CreateTokenErr{}
-		if errors.As(err, &tokenErr) {
-			return response.Error(tokenErr.StatusCode, tokenErr.ExternalErr, tokenErr.InternalErr)
-		}
-		return response.Err(err)
+		return response.Error(401, "Invalid username or password", err)
 	}
 
-	metrics.MApiLoginPost.Inc()
-	return authn.HandleLoginResponse(c.Req, c.Resp, hs.Cfg, identity, hs.ValidateRedirectTo, hs.Features)
+	// Создаем токен
+	token, err := hs.AuthTokenService.CreateToken(c.Req.Context(), &auth.CreateTokenCommand{
+		User:      user,
+		ClientIP:  c.Req.RemoteAddr,
+		UserAgent: c.Req.UserAgent(),
+	})
+	if err != nil {
+		return response.Error(500, "Failed to create auth token", err)
+	}
+
+	// Возвращаем токен клиенту
+	return response.JSON(200, map[string]interface{}{
+		"token": token.UnhashedToken,
+	})
 }
 
 func (hs *HTTPServer) LoginPasswordless(c *contextmodel.ReqContext) response.Response {
